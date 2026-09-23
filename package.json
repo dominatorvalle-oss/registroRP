@@ -1,0 +1,16 @@
+{
+  "name": "omnia-midnight",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Panel de ventas gamificado para el equipo de RPs de Omnia Experiences - evento Midnight",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
