@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Omnia Midnight · Admin</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap">
+<style>
+:root{
+  --bg:#060611; --panel-line:rgba(178,120,255,0.22); --chrome:#e4e7ee; --chrome-dim:#9a9db3;
+  --purple:#b14aff; --cyan:#29e7ff; --magenta:#ff2fb0; --danger:#ff5470; --text:#eef0f7; --text-dim:#9497ad;
+}
+*{box-sizing:border-box;}
+html,body{margin:0; background:var(--bg); color:var(--text);}
+body{font-family:'Rajdhani',system-ui,sans-serif; min-height:100vh; padding:24px 16px 60px;}
+h1,h2{font-family:'Orbitron',system-ui,sans-serif; margin:0;}
+[hidden]{display:none !important;}
+.wrap{max-width:560px; margin-inline:auto; display:flex; flex-direction:column; gap:18px;}
+.title{font-size:22px; letter-spacing:2px; text-align:center; background:linear-gradient(180deg,var(--cyan),var(--purple)); -webkit-background-clip:text; background-clip:text; color:transparent;}
+.card{background:linear-gradient(180deg, rgba(178,74,255,.07), rgba(15,15,30,.6)); border:1px solid var(--panel-line); border-radius:16px; padding:18px;}
+.field{display:flex; flex-direction:column; gap:8px;}
+label{font-size:12px; letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);}
+input[type=password],input[type=number],input[type=text]{
+  padding:12px 14px; border-radius:10px; border:1px solid var(--panel-line);
+  background:rgba(255,255,255,.03); color:var(--text); font-family:'Share Tech Mono',monospace; font-size:16px; outline:none;
+}
+input:focus{border-color:var(--cyan);}
+button{
+  font-family:'Rajdhani',sans-serif; font-weight:700; letter-spacing:.5px; cursor:pointer;
+  border-radius:10px; border:1px solid var(--panel-line); background:rgba(255,255,255,.04); color:var(--text);
+  padding:10px 14px; transition:border-color .15s, background .15s;
+}
+button:hover{border-color:var(--cyan);}
+button:active{transform:scale(.97);}
+.btn-primary{background:linear-gradient(135deg,var(--purple),var(--cyan)); color:#0a0512; border:none; font-weight:800;}
+.rp-row{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--panel-line);}
+.rp-row:last-child{border-bottom:none;}
+.rp-name{flex:1; font-weight:700;}
+.rp-row input[type=number]{width:80px; text-align:center;}
+.msg{font-size:13px; padding:8px 12px; border-radius:8px; display:none;}
+.msg.ok{display:block; color:#3cffa0; border:1px solid rgba(60,255,160,.4);}
+.msg.err{display:block; color:var(--danger); border:1px solid rgba(255,84,112,.4);}
+.hint{font-size:11px; color:var(--text-dim);}
+a{color:var(--cyan);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">OMNIA MIDNIGHT · ADMIN</div>
+
+  <section id="gate" class="card field">
+    <label for="pw">Clave de administrador</label>
+    <input id="pw" type="password" placeholder="••••••••" autocomplete="off">
+    <button id="btn-login" class="btn-primary">Entrar</button>
+    <div id="gate-msg" class="msg err"></div>
+  </section>
+
+  <section id="panel" hidden>
+    <div class="card field" style="margin-bottom:18px;">
+      <label>Ventas de otros canales (no reportadas por RPs)</label>
+      <div style="display:flex; gap:10px;">
+        <input id="external-sales" type="number" min="0" step="1">
+        <button id="btn-save-external" class="btn-primary">Guardar</button>
+      </div>
+      <div class="hint">Se suma al total de boletos vendidos por el equipo para calcular el aforo hacia 300.</div>
+      <div id="external-msg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:14px; letter-spacing:1.5px; margin-bottom:10px;">Corregir boletos por RP</h2>
+      <div id="rp-list"></div>
+      <div id="rp-msg" class="msg"></div>
+    </div>
+
+    <p class="hint" style="text-align:center;">
+      <a href="/">Volver al panel del equipo</a>
+    </p>
+  </section>
+</div>
+
+<script>
+(function(){
+  var RPS = [
+    {slug:'athena', name:'Athe'}, {slug:'aless', name:'Aless'}, {slug:'ortiz', name:'Ortiz'},
+    {slug:'silvana', name:'Silvana'}, {slug:'dulce', name:'Dulce'}, {slug:'bryan', name:'Bryan'},
+    {slug:'gabo', name:'Gabo'}, {slug:'matt', name:'Matt'}, {slug:'ara_martz', name:'Ara Martz'}
+  ];
+  var $ = function(id){ return document.getElementById(id); };
+  var token = null;
+  try{ token = sessionStorage.getItem('omnia_admin_token'); }catch(e){}
+
+  function showMsg(el, text, ok){
+    el.textContent = text;
+    el.className = 'msg ' + (ok ? 'ok' : 'err');
+  }
+
+  function buildRpList(){
+    var list = $('rp-list');
+    list.innerHTML = '';
+    RPS.forEach(function(r){
+      var row = document.createElement('div');
+      row.className = 'rp-row';
+      row.innerHTML =
+        '<span class="rp-name">'+r.name+'</span>'+
+        '<input type="number" min="0" step="1" id="rp-input-'+r.slug+'">'+
+        '<button data-slug="'+r.slug+'">Guardar</button>';
+      list.appendChild(row);
+    });
+    list.querySelectorAll('button').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var slug = btn.dataset.slug;
+        var val = parseInt($('rp-input-'+slug).value, 10);
+        if(!Number.isInteger(val) || val<0){ showMsg($('rp-msg'), 'Ingresa un número válido.', false); return; }
+        adminPost('/api/admin/set-tickets', {slug:slug, tickets:val}).then(function(){
+          showMsg($('rp-msg'), 'Guardado.', true);
+        }).catch(function(err){
+          showMsg($('rp-msg'), err.message, false);
+        });
+      });
+    });
+  }
+
+  function adminPost(url, body){
+    return fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json', 'x-admin-token':token},
+      body: JSON.stringify(body)
+    }).then(function(r){
+      if(!r.ok) return r.json().then(function(d){ throw new Error(d.error||'error'); });
+      return r.json();
+    });
+  }
+
+  function loadState(){
+    fetch('/api/state').then(function(r){ return r.json(); }).then(function(data){
+      data.rps.forEach(function(r){
+        var input = $('rp-input-'+r.slug);
+        if(input) input.value = r.tickets;
+      });
+      $('external-sales').value = (data.event && data.event.externalSales) || 0;
+    });
+  }
+
+  function enterPanel(){
+    $('gate').hidden = true;
+    $('panel').hidden = false;
+    buildRpList();
+    loadState();
+  }
+
+  function tryLogin(pw){
+    token = pw;
+    fetch('/api/admin/check', {method:'POST', headers:{'x-admin-token':token}})
+      .then(function(r){
+        if(!r.ok) throw new Error(r.status===401 ? 'Clave incorrecta.' : 'Admin no configurado en el servidor.');
+        try{ sessionStorage.setItem('omnia_admin_token', token); }catch(e){}
+        enterPanel();
+      })
+      .catch(function(err){ showMsg($('gate-msg'), err.message, false); });
+  }
+
+  $('btn-login').addEventListener('click', function(){ tryLogin($('pw').value); });
+  $('pw').addEventListener('keydown', function(e){ if(e.key==='Enter') tryLogin($('pw').value); });
+
+  $('btn-save-external').addEventListener('click', function(){
+    var val = parseInt($('external-sales').value, 10);
+    if(!Number.isInteger(val) || val<0){ showMsg($('external-msg'), 'Ingresa un número válido.', false); return; }
+    adminPost('/api/admin/set-external-sales', {externalSales:val}).then(function(){
+      showMsg($('external-msg'), 'Guardado.', true);
+    }).catch(function(err){
+      showMsg($('external-msg'), err.message, false);
+    });
+  });
+
+  if(token){ tryLogin(token); }
+})();
+</script>
+</body>
+</html>

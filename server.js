@@ -62,6 +62,13 @@ function publicState() {
   };
 }
 
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+function requireAdmin(req, res, next) {
+  if (!ADMIN_TOKEN) return res.status(503).json({ error: 'admin_no_configurado' });
+  if (req.headers['x-admin-token'] !== ADMIN_TOKEN) return res.status(401).json({ error: 'no_autorizado' });
+  next();
+}
+
 const sseClients = [];
 function broadcast() {
   const payload = `data: ${JSON.stringify(publicState())}\n\n`;
@@ -117,9 +124,12 @@ app.post('/api/sale', (req, res) => {
   res.json(publicState());
 });
 
-// Reserved for a future admin view: sets an RP's ticket count directly
-// (e.g. to correct a mistake) instead of applying a +/- delta.
-app.post('/api/admin/set-tickets', (req, res) => {
+app.post('/api/admin/check', requireAdmin, (req, res) => {
+  res.json({ ok: true });
+});
+
+// Sets an RP's ticket count directly (e.g. to correct a mistake) instead of applying a +/- delta.
+app.post('/api/admin/set-tickets', requireAdmin, (req, res) => {
   const { slug, tickets } = req.body || {};
   if (!RP_SLUGS.has(slug)) return res.status(400).json({ error: 'rp_desconocido' });
   const t = Number(tickets);
@@ -138,6 +148,16 @@ app.post('/api/admin/set-tickets', (req, res) => {
     });
     if (state.log.length > MAX_LOG) state.log = state.log.slice(-MAX_LOG);
   }
+  saveState();
+  broadcast();
+  res.json(publicState());
+});
+
+app.post('/api/admin/set-external-sales', requireAdmin, (req, res) => {
+  const { externalSales } = req.body || {};
+  const v = Number(externalSales);
+  if (!Number.isInteger(v) || v < 0) return res.status(400).json({ error: 'cantidad_invalida' });
+  state.event.externalSales = v;
   saveState();
   broadcast();
   res.json(publicState());
