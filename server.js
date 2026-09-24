@@ -26,29 +26,69 @@ function defaultState() {
   return { rps, event: { externalSales: 0 }, log: [] };
 }
 
-function loadState() {
-  try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    // fill in any RP that might be missing from an older save
-    RPS.forEach((r) => {
-      if (!parsed.rps[r.slug]) parsed.rps[r.slug] = { name: r.name, tickets: 0 };
-    });
-    if (!parsed.event) parsed.event = { externalSales: 0 };
-    if (!Array.isArray(parsed.log)) parsed.log = [];
-    return parsed;
-  } catch (e) {
-    return defaultState();
+function normalizeState(parsed) {
+  if (!parsed || typeof parsed !== 'object') return defaultState();
+  if (!parsed.rps) parsed.rps = {};
+  RPS.forEach((r) => {
+    if (!parsed.rps[r.slug]) parsed.rps[r.slug] = { name: r.name, tickets: 0 };
+  });
+  if (!parsed.event) parsed.event = { externalSales: 0 };
+  if (!Array.isArray(parsed.log)) parsed.log = [];
+  return parsed;
+}
+
+// With DATABASE_URL (Postgres) data survives restarts. Without it, a local
+// file is used, which is only suitable for development: hosts with an
+// ephemeral disk (e.g. Render free tier) wipe it on every restart.
+const DATABASE_URL = process.env.DATABASE_URL || '';
+let pool = null;
+if (DATABASE_URL) {
+  const { Pool } = require('pg');
+  let useSsl = false;
+  try { useSsl = new URL(DATABASE_URL).hostname.includes('.'); } catch (e) {}
+  pool = new Pool({ connectionString: DATABASE_URL, ssl: useSsl ? { rejectUnauthorized: false } : false });
+} else {
+  console.warn('ATENCION: sin DATABASE_URL los datos se guardan en un archivo y se pierden al reiniciar el servidor.');
+}
+
+async function loadState() {
+  let parsed = null;
+  if (pool) {
+    await pool.query('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value JSONB NOT NULL)');
+    const r = await pool.query("SELECT value FROM kv WHERE key = 'state'");
+    if (r.rows.length) parsed = r.rows[0].value;
+  } else {
+    try { parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) {}
   }
+  return normalizeState(parsed);
 }
 
-function saveState() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2));
+let saving = false;
+let dirty = false;
+async function persist() {
+  if (saving) { dirty = true; return; }
+  saving = true;
+  try {
+    do {
+      dirty = false;
+      if (pool) {
+        await pool.query(
+          "INSERT INTO kv (key, value) VALUES ('state', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+          [JSON.stringify(state)]
+        );
+      } else {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2));
+      }
+    } while (dirty);
+  } catch (e) {
+    console.error('Error guardando estado:', e.message);
+  }
+  saving = false;
 }
+function saveState() { persist(); }
 
-let state = loadState();
-saveState();
+let state = defaultState();
 
 function publicState() {
   return {
@@ -167,6 +207,13 @@ app.get('/api/export', (req, res) => {
   res.json(state);
 });
 
-app.listen(PORT, () => {
-  console.log(`Omnia Midnight escuchando en el puerto ${PORT}`);
+loadState().then((loaded) => {
+  state = loaded;
+  saveState();
+  app.listen(PORT, () => {
+    console.log(`Omnia Midnight escuchando en el puerto ${PORT} (${pool ? 'base de datos Postgres' : 'archivo local'})`);
+  });
+}).catch((e) => {
+  console.error('No se pudo cargar el estado inicial:', e.message);
+  process.exit(1);
 });

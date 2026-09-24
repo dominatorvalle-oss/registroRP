@@ -11,6 +11,19 @@
     "node": ">=18"
   },
   "dependencies": {
-    "express": "^4.19.2"
-  }
+    "express": "^4.19.2",
+    "pg": "^8.23.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dominatorvalle-oss/registroRP.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/dominatorvalle-oss/registroRP/issues"
+  },
+  "homepage": "https://github.com/dominatorvalle-oss/registroRP#readme"
 }
