@@ -203,6 +203,13 @@ app.post('/api/admin/set-external-sales', requireAdmin, (req, res) => {
   res.json(publicState());
 });
 
+app.post('/api/admin/clear-log', requireAdmin, (req, res) => {
+  state.log = [];
+  saveState();
+  broadcast();
+  res.json(publicState());
+});
+
 app.get('/api/export', (req, res) => {
   res.json(state);
 });
